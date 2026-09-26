@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --import tsx/esm --test tests/examples.test.ts",
-    "playground:dev": "esbuild playground/main.ts --bundle --servedir=playground --serve=3000",
+    "playground:dev": "esbuild playground/main.ts --bundle --outfile=playground/bundle.js --servedir=playground --serve=3000",
     "playground:build": "esbuild playground/main.ts --bundle --outfile=playground/bundle.js"
   },
   "devDependencies": {
