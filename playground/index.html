@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Puerto Banana — Rules Playground</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      color: #1a1a1a;
+      background: #fafafa;
+      padding: 2rem 1rem;
+    }
+
+    .page { max-width: 680px; margin: 0 auto; }
+
+    /* ---- Header ---- */
+    h1 { font-size: 1.4rem; margin-bottom: 0.2rem; }
+    h1 small { font-weight: 400; color: #666; }
+    .subtitle { color: #666; margin-bottom: 1.75rem; font-size: 0.9rem; }
+
+    /* ---- Setup ---- */
+    .setup { background: white; border: 1px solid #e0e0e0; border-radius: 6px; padding: 1.25rem; margin-bottom: 1.5rem; }
+
+    .control-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .control-row label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: #555; }
+    .divider { width: 1px; height: 1.2em; background: #ddd; margin: 0 0.25rem; }
+
+    input[type="number"], input[type="text"] {
+      padding: 0.3rem 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font: inherit;
+      background: white;
+    }
+    input[type="number"] { width: 4.5em; }
+    input.wide { width: 5.5em; }
+
+    .count-btns { display: flex; gap: 2px; }
+    .count-btn {
+      padding: 0.2rem 0.55rem;
+      border: 1px solid #ccc;
+      background: white;
+      border-radius: 3px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.85rem;
+      color: #444;
+    }
+    .count-btn:hover { background: #f0f0f0; }
+    .count-btn.active { background: #1a1a1a; color: white; border-color: #1a1a1a; }
+
+    /* ---- Player table ---- */
+    .player-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+    .player-table th {
+      text-align: left;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #888;
+      border-bottom: 1px solid #eee;
+    }
+    .player-table td { padding: 0.3rem 0.5rem; }
+    .player-table input[type="text"] { width: 130px; }
+
+    /* ---- Action buttons ---- */
+    .action-row { display: flex; gap: 0.5rem; align-items: center; }
+    button {
+      padding: 0.45rem 1.1rem;
+      border: 1px solid #ccc;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.9rem;
+    }
+    button:hover:not(:disabled) { background: #f5f5f5; }
+    button.primary { background: #1a1a1a; color: white; border-color: #1a1a1a; }
+    button.primary:hover:not(:disabled) { background: #333; }
+    button.muted { color: #888; font-size: 0.85rem; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    #step-counter { font-size: 0.85rem; color: #888; margin-left: 0.25rem; }
+
+    /* ---- Output ---- */
+    #output { background: white; border: 1px solid #e0e0e0; border-radius: 6px; padding: 1.25rem; }
+    #output[hidden] { display: none; }
+
+    .out-section { margin-bottom: 1.5rem; }
+    .out-section:last-child { margin-bottom: 0; }
+    .out-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #999;
+      margin-bottom: 0.6rem;
+    }
+
+    /* ---- Tiers ---- */
+    .tier-row { font-family: monospace; font-size: 0.9rem; padding: 0.1rem 0; }
+    .tier-t1 { font-weight: 700; }
+
+    /* ---- Narration ---- */
+    .narration-group { margin-bottom: 0.5rem; }
+    .narration-group p { margin-bottom: 0.2rem; }
+    .narration-group p:last-child { margin-bottom: 0; }
+    .group-sep { border: none; border-top: 1px dashed #e8e8e8; margin: 0.65rem 0; }
+    .step-hint { font-size: 0.85rem; color: #aaa; margin-top: 0.5rem; font-style: italic; }
+
+    /* ---- Result ---- */
+    #result-section[hidden] { display: none; }
+    .result-grid { display: flex; gap: 1rem 2rem; flex-wrap: wrap; }
+    .result-player { display: flex; flex-direction: column; }
+    .result-name { font-weight: 600; font-size: 0.85rem; color: #666; }
+    .result-stash { font-size: 1.1rem; font-weight: 700; }
+    .result-delta { font-size: 0.8rem; color: #999; }
+    .result-winner .result-name { color: #1a7a4a; }
+    .result-winner .result-stash { color: #1a7a4a; }
+    .winner-banner {
+      font-weight: 700;
+      color: #1a7a4a;
+      margin-bottom: 0.75rem;
+      font-size: 1rem;
+    }
+
+    .error { color: #c0392b; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Puerto Banana <small>Rules Playground</small></h1>
+    <p class="subtitle">
+      Type in stashes and bids, then click <strong>Resolve</strong> to see everything at once,
+      or <strong>Step</strong> through the cascade one event at a time.
+    </p>
+
+    <section class="setup">
+      <div class="control-row">
+        <label>
+          Round
+          <input type="number" id="round-num" value="2" min="1" max="9999">
+          <span style="font-size:0.8rem;color:#aaa">(1 = lot always 10)</span>
+        </label>
+        <div class="divider"></div>
+        <label>Players:</label>
+        <div class="count-btns" id="count-btns"></div>
+      </div>
+
+      <table class="player-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Stash</th>
+            <th>Bid</th>
+          </tr>
+        </thead>
+        <tbody id="player-rows"></tbody>
+      </table>
+
+      <div class="action-row">
+        <button class="primary" id="btn-resolve">Resolve</button>
+        <button id="btn-step">Step</button>
+        <span id="step-counter"></span>
+        <button class="muted" id="btn-reset">Reset</button>
+      </div>
+    </section>
+
+    <section id="output" hidden>
+      <div class="out-section" id="tiers-section">
+        <div class="out-label">Tiers</div>
+        <div id="tiers"></div>
+      </div>
+
+      <div class="out-section" id="narration-section">
+        <div class="out-label">Narration</div>
+        <div id="narration"></div>
+        <div class="step-hint" id="step-hint"></div>
+      </div>
+
+      <div class="out-section" id="result-section" hidden>
+        <div class="out-label">Result</div>
+        <div id="result-content"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="bundle.js"></script>
+</body>
+</html>

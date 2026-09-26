@@ -31,6 +31,7 @@ export type RoundLog = {
   round: number;
   lot: number;
   lotReason: string;
+  playerNames: Readonly<Record<string, string>>;
   snapshot: Readonly<Record<string, number>>;
   bids: Readonly<Record<string, number>>;
   tiers: readonly Tier[];
@@ -39,7 +40,12 @@ export type RoundLog = {
   resultStashes: Readonly<Record<string, number>>;
   bananasCreated: number;
   bananasDestroyed: number;
+  // Flat narration for printing; narrationGroups is the same content split by event.
   narration: readonly string[];
+  // narrationGroups[0] = opening (round/lot/stashes/bids).
+  // narrationGroups[1..n] = one entry per cascade step.
+  // narrationGroups[n+1] = winner announcement, if the game ended.
+  narrationGroups: readonly (readonly string[])[];
 };
 
 export type RoundResult = {
@@ -184,25 +190,20 @@ export function resolveRound(
 
   const cascadeSteps: CascadeStep[] = [];
   const movements: Movement[] = [];
-  const narration: string[] = [];
   let bananasDestroyed = 0;
 
-  // Narration: opening line
-  narration.push(`Round ${round}. The lot is ${lot} bananas (${lotReason}).`);
+  // Narration is collected in groups:
+  //   openGroup     — round/lot/stashes/bids
+  //   stepGroups[]  — one entry per cascade step
+  // A closing group (winner) is appended after invariant checks if needed.
+  const openGroup: string[] = [];
+  const stepGroups: string[][] = [];
 
-  // Narration: starting stashes
-  narration.push(
-    "Stashes: " +
-    players.map(p => `${p.name}=${p.stash}`).join(", ") + ".",
-  );
-
-  // Narration: all bids, highest first
-  const sortedPlayers = [...players].sort(
-    (a, b) => (bids[b.id] ?? 0) - (bids[a.id] ?? 0),
-  );
-  narration.push(
-    sortedPlayers.map(p => `${p.name} bid ${bids[p.id] ?? 0}`).join(". ") + ".",
-  );
+  // Opening narration
+  openGroup.push(`Round ${round}. The lot is ${lot} bananas (${lotReason}).`);
+  openGroup.push("Stashes: " + players.map(p => `${p.name}=${p.stash}`).join(", ") + ".");
+  const sortedPlayers = [...players].sort((a, b) => (bids[b.id] ?? 0) - (bids[a.id] ?? 0));
+  openGroup.push(sortedPlayers.map(p => `${p.name} bid ${bids[p.id] ?? 0}`).join(". ") + ".");
 
   // Step 5: Cascade
   let tierIdx = 0;
@@ -210,18 +211,19 @@ export function resolveRound(
   while (tierIdx < tiers.length) {
     const current = tiers[tierIdx];
     const isLast = tierIdx === tiers.length - 1;
+    const sg: string[] = [];
 
     if (current.playerIds.length > 1 || isLast) {
       // Free split — tied top tier, or last tier standing
       const winnerNames = current.playerIds.map(nameOf);
 
       if (current.playerIds.length > 1) {
-        narration.push(
+        sg.push(
           `${listNames(winnerNames)} tied at the top. ` +
           `They split the ${lot}-banana lot for free.`,
         );
       } else {
-        narration.push(
+        sg.push(
           `${winnerNames[0]} is the last bidder remaining. ` +
           `They take the ${lot}-banana lot for free.`,
         );
@@ -233,12 +235,13 @@ export function resolveRound(
         movements.push({ playerId: id, delta: shares[id], reason: "lot share (free)" });
       }
 
-      narration.push(
+      sg.push(
         current.playerIds
           .map(id => `${nameOf(id)}: ${snapshot[id]} -> ${stashes[id]}`)
           .join("  ") + ".",
       );
 
+      stepGroups.push(sg);
       cascadeSteps.push({
         kind: "free",
         tierIndex: tierIdx,
@@ -254,13 +257,13 @@ export function resolveRound(
     const gap = current.bid - next.bid;
     const canAfford = stashes[bidderId] + lot >= gap;
 
-    narration.push(
+    sg.push(
       `${nameOf(bidderId)} alone bid highest at ${current.bid}. ` +
       `The next bid is ${next.bid}, a gap of ${gap}.`,
     );
 
     if (canAfford) {
-      narration.push(
+      sg.push(
         `${nameOf(bidderId)} has ${stashes[bidderId]} bananas ` +
         `plus the ${lot}-banana lot — they can afford it.`,
       );
@@ -281,22 +284,23 @@ export function resolveRound(
 
       const kept = lot - gap;
       if (kept >= 0) {
-        narration.push(
+        sg.push(
           `${nameOf(bidderId)} pays ${gap} to ${listNames(next.playerIds.map(nameOf))} ` +
           `and keeps ${kept} bananas from the lot.`,
         );
       } else {
-        narration.push(
+        sg.push(
           `${nameOf(bidderId)} uses the full lot and ${-kept} from their own stash ` +
           `to pay the ${gap}-banana gap to ${listNames(next.playerIds.map(nameOf))}.`,
         );
       }
-      narration.push(
+      sg.push(
         [bidderId, ...next.playerIds]
           .map(id => `${nameOf(id)}: ${snapshot[id]} -> ${stashes[id]}`)
           .join("  ") + ".",
       );
 
+      stepGroups.push(sg);
       cascadeSteps.push({
         kind: "paid",
         tierIndex: tierIdx,
@@ -309,12 +313,12 @@ export function resolveRound(
     } else {
       // Bust
       const destroyed = stashes[bidderId];
-      narration.push(
+      sg.push(
         `${nameOf(bidderId)} has ${destroyed} banana${destroyed !== 1 ? "s" : ""} ` +
         `plus the ${lot}-banana lot = ${destroyed + lot} total, ` +
         `but needs ${gap}. They cannot afford it.`,
       );
-      narration.push(
+      sg.push(
         `${nameOf(bidderId)} busts. ` +
         `Their ${destroyed} banana${destroyed !== 1 ? "s are" : " is"} destroyed. ` +
         `The lot passes on intact.`,
@@ -330,6 +334,7 @@ export function resolveRound(
         busterId: bidderId,
         destroyed,
       });
+      stepGroups.push(sg);
       stashes[bidderId] = 0;
       tierIdx++;
     }
@@ -340,8 +345,9 @@ export function resolveRound(
   const resultStashes: Record<string, number> = {};
   for (const p of resultPlayers) resultStashes[p.id] = p.stash;
 
-  // Assert all invariants — throws loudly with context on any violation
-  assertInvariants(resultPlayers, lot, snapshot, lot, bananasDestroyed, cascadeSteps, narration);
+  // Assemble groups so far (no closing group yet) and assert invariants
+  const groups: (readonly string[])[] = [openGroup, ...stepGroups];
+  assertInvariants(resultPlayers, lot, snapshot, lot, bananasDestroyed, cascadeSteps, groups.flat());
 
   // Winner check (§1.6, Step 6)
   const maxStash = resultPlayers.reduce((m, p) => Math.max(m, p.stash), 0);
@@ -349,17 +355,23 @@ export function resolveRound(
   if (maxStash >= 200) {
     winners = resultPlayers.filter(p => p.stash === maxStash);
     const winnerNames = listNames(winners.map(p => p.name));
-    if (winners.length === 1) {
-      narration.push(`${winnerNames} reaches ${maxStash} bananas — they win!`);
-    } else {
-      narration.push(`${winnerNames} are co-winners with ${maxStash} bananas each!`);
-    }
+    const line = winners.length === 1
+      ? `${winnerNames} reaches ${maxStash} bananas — they win!`
+      : `${winnerNames} are co-winners with ${maxStash} bananas each!`;
+    groups.push([line]);
   }
+
+  const narrationGroups: readonly (readonly string[])[] = groups;
+  const narration: readonly string[] = narrationGroups.flat();
+
+  const playerNames: Record<string, string> = {};
+  for (const p of players) playerNames[p.id] = p.name;
 
   const log: RoundLog = {
     round,
     lot,
     lotReason,
+    playerNames,
     snapshot,
     bids,
     tiers,
@@ -369,6 +381,7 @@ export function resolveRound(
     bananasCreated: lot,
     bananasDestroyed,
     narration,
+    narrationGroups,
   };
 
   return { players: resultPlayers, log, winners };
