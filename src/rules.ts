@@ -190,6 +190,12 @@ export function resolveRound(
   // Narration: opening line
   narration.push(`Round ${round}. The lot is ${lot} bananas (${lotReason}).`);
 
+  // Narration: starting stashes
+  narration.push(
+    "Stashes: " +
+    players.map(p => `${p.name}=${p.stash}`).join(", ") + ".",
+  );
+
   // Narration: all bids, highest first
   const sortedPlayers = [...players].sort(
     (a, b) => (bids[b.id] ?? 0) - (bids[a.id] ?? 0),
