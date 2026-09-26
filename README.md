@@ -10,21 +10,24 @@ TypeScript throughout — server and browser share one language and one rules en
 
 ## Build phases
 
-| Phase | What it produces |
-|---|---|
-| 0 | Pure rules engine + worked examples as tests |
-| 1 | Browser playground — type in stashes and bids, click Resolve |
-| 2 | Headless simulator — 10,000 games with scripted bots |
-| 3 | Lobbies — create, join, see player list update live |
-| 4 | Live gameplay — full rounds, bid timer, narration |
-| 5 | Bot players in real games |
-| 6 | Replay viewer — step through a finished game round by round |
+| Phase | What it produces | Status |
+|---|---|---|
+| 0 | Pure rules engine + worked examples as tests | ✓ done |
+| 1 | Browser playground — type in stashes and bids, click Resolve | ✓ done |
+| 2 | Headless simulator — 10,000 games with scripted bots | |
+| 3 | Lobbies — create, join, see player list update live | |
+| 4 | Live gameplay — full rounds, bid timer, narration | |
+| 5 | Bot players in real games | |
+| 6 | Replay viewer — step through a finished game round by round | |
 
 Each phase ends with an acceptance check a non-programmer can run themselves.
 
 ## Running
 
-*Nothing is runnable yet — Phase 0 is up next.*
+```
+npm test                  # run the worked-example tests
+npm run playground:dev    # serve the rules playground at localhost:3000
+```
 
 ## Design decisions
 
