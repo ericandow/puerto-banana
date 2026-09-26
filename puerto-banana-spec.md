@@ -173,7 +173,7 @@ T1={A}@100 vs T2={B}@50, gap=50. A has 3+40 = 43, which is less than 50.
 **A busts to 0.** Lot passes on intact.
 Now T2={B}@50 vs T3={C}@20, gap=30. B has 40+40 = 80 ≥ 30.
 B = 40+40−30 = **50**. C = 12+30 = **42**. A = **0**.
-Next lot = 50. (37 bananas were destroyed.)
+Next lot = 50. (3 bananas were destroyed.)
 
 **D — Cascade to the last tier, and a win.**
 Stashes A=1, B=2, C=100. Lot = 100.
