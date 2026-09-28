@@ -14,7 +14,7 @@ TypeScript throughout — server and browser share one language and one rules en
 |---|---|---|
 | 0 | Pure rules engine + worked examples as tests | ✓ done |
 | 1 | Browser playground — type in stashes and bids, click Resolve | ✓ done |
-| 2 | Headless simulator — 10,000 games with scripted bots | |
+| 2 | Headless simulator — 10,000 games with scripted bots | ✓ done |
 | 3 | Lobbies — create, join, see player list update live | |
 | 4 | Live gameplay — full rounds, bid timer, narration | |
 | 5 | Bot players in real games | |
@@ -27,7 +27,30 @@ Each phase ends with an acceptance check a non-programmer can run themselves.
 ```
 npm test                  # run the worked-example tests
 npm run playground:dev    # serve the rules playground at localhost:3000
+npm run simulate          # run 10,000 games and print a strategy summary
 ```
+
+## Simulator bots
+
+The simulator (`src/simulator.ts`) pits scripted bots against each other across 10,000 games with random player counts (2–10) and random strategy assignments. All 10,000 games complete without crashes, hangs, or invariant failures.
+
+Current strategies, in rough order of effectiveness:
+
+| Strategy | Bid each round |
+|---|---|
+| `scalemax` | Previous round's max bid × (current lot ÷ previous lot), rounded up |
+| `doublemax` | Previous round's max bid × 2 |
+| `lot+1` | Current lot + 1 |
+| `scalemed` | Previous round's median bid × (current lot ÷ previous lot), rounded up |
+| `max` | Previous round's max bid |
+| `random` | Random integer from 0 to 2 × current lot |
+| `min+1` | Previous round's min bid + 1 |
+| `median` | Previous round's median bid |
+| `zero` | Always 0 |
+| `scalemin` | Previous round's min bid × (current lot ÷ previous lot), rounded up |
+| `min` | Previous round's min bid |
+
+Key finding: strategies that account for the current lot size (`scalemax`, `lot+1`, `random`) consistently outperform lot-blind strategies (`max`, `median`, `min`). Scaling the previous *maximum* bid is especially powerful because the max is the market-clearing price — the bid that actually won last round.
 
 ## Design decisions
 
