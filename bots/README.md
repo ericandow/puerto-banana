@@ -31,9 +31,11 @@ npm run arena -- bots/my-bot.ts
 | Rule | What happens if you break it |
 |---|---|
 | Return a non-negative integer | Non-integers are rounded; negatives are clamped to 0. Both count as violations. |
+| Return ≤ `Number.MAX_SAFE_INTEGER` | Bids above this are clamped to `Number.MAX_SAFE_INTEGER`. Counts as a violation. |
 | Return a finite number | Non-finite values (Infinity, NaN) forfeit the round — your bid becomes 0. |
 | Return within 100 ms | Your call is killed and your bid becomes 0. |
 | Single-file submissions only | Multi-file bots aren't accepted. |
+| No `require()` or `import()` | The sandbox has no module system. Only `Math` and `console` are available. |
 
 A bot that violates constraints repeatedly will be flagged in the summary output, but it will not crash the arena.
 
@@ -44,5 +46,6 @@ A bot that violates constraints repeatedly will be flagged in the summary output
 - `console.log()` works and goes to stdout — useful for debugging, noisy at scale.
 - You cannot `require()` or `import()` other modules. The sandbox has no file system access.
 - You cannot read other bots' source code or share state with them.
+- The `state` object is frozen — mutations are silently ignored (or throw in strict mode). Copy values out if you need to track them.
 
 See `example.ts` for a minimal working bot.
