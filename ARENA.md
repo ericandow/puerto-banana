@@ -27,7 +27,6 @@ export type BotState = {
   readonly myStash:  number;         // your own banana count before bids are resolved
   readonly prevBids: readonly number[] | null;  // last round's bids, sorted ascending, NO player IDs
   readonly prevLot:  number | null;  // lot size last round
-  readonly rng:      () => number;   // seeded PRNG unique to this bot — use instead of Math.random() for reproducibility
 };
 ```
 
@@ -81,7 +80,6 @@ The sandbox context contains **only**:
 - `Math` (read-only copy — `Math.random` is present but using it makes the bot non-reproducible)
 - `console` (live — output goes to stdout so you can review it manually) *(Decided: show console output.)*
 - `exports` and `module` objects so CommonJS-style default exports work
-- A `__rng` function: a per-bot PRNG seeded from `gameSeed XOR botIndex`. Each bot gets its own independent sequence — using `__rng` is reproducible and doesn't affect any other bot's sequence. *(Decided: Option C.)*
 
 **Why `vm` and not Worker threads?**  
 Workers are heavier, require a separate file, and complicate the loader. `vm` is synchronous, composable, and sufficient because bots must be synchronous. *(Decided: no async bots.)*
@@ -156,7 +154,7 @@ A non-programmer can verify this phase by:
 | # | Question | Options |
 |---|---|---|
 | 1 | Should bots receive `playerCount`? | ✓ *No.* They can count `prevBids.length`. Superfluous info makes aggressive strategies too easy. |
-| 2 | Should `__rng` be in the sandbox? | ✓ *Yes, per-bot derived RNG.* Each bot gets its own PRNG seeded from `gameSeed XOR botIndex`. Independent, reproducible, doesn't contaminate other bots' sequences. |
+| 2 | Should `__rng` be in the sandbox? | ✓ *No.* Bots may use `Math.random()`. Non-reproducibility per-game is fine; win rates average out over 10,000 games. No extra plumbing. |
 | 3 | Should the arena allow async bots? | ✓ *No.* Synchronous only; the `vm` timeout is the safety net. |
 | 4 | Should console output from bots be shown or suppressed? | ✓ *Show it.* Goes straight to stdout for manual review. |
 | 5 | TypeScript bots: compile at load time or require pre-built JS? | ✓ *Compile at load time with `tsx`.* Ease of submission wins; the submitter pool is trusted. |
