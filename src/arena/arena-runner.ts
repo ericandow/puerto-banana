@@ -82,6 +82,7 @@ type GameResult = {
   winnerNames: string[];
   hitMaxRounds: boolean;
   playerCount: number;
+  bustsByName: Map<string, number>;
 };
 
 function simulateGame(slots: Slot[], gameSeed: number): GameResult {
@@ -97,6 +98,7 @@ function simulateGame(slots: Slot[], gameSeed: number): GameResult {
   let totalDestroyed = 0;
   let prevBids: number[] | null = null;
   let prevLot: number | null = null;
+  const bustsByName = new Map<string, number>();
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
     const { lot } = calculateLot(players, round);
@@ -113,6 +115,12 @@ function simulateGame(slots: Slot[], gameSeed: number): GameResult {
 
     const result = resolveRound(round, players, bids, rng);
     totalDestroyed += result.log.bananasDestroyed;
+    for (const step of result.log.cascadeSteps) {
+      if (step.kind === "busted") {
+        const name = resolved[parseInt(step.busterId.slice(1))].name;
+        bustsByName.set(name, (bustsByName.get(name) ?? 0) + 1);
+      }
+    }
     players = result.players;
 
     if (result.winners) {
@@ -122,6 +130,7 @@ function simulateGame(slots: Slot[], gameSeed: number): GameResult {
         winnerNames: result.winners.map(w => resolved[parseInt(w.id.slice(1))].name),
         hitMaxRounds: false,
         playerCount: slots.length,
+        bustsByName,
       };
     }
   }
@@ -132,6 +141,7 @@ function simulateGame(slots: Slot[], gameSeed: number): GameResult {
     winnerNames: [],
     hitMaxRounds: true,
     playerCount: slots.length,
+    bustsByName,
   };
 }
 
@@ -151,6 +161,7 @@ const meta = makeRng(0xca11ab1e);
 
 const wins        = new Map<string, number>(ALL_NAMES.map(n => [n, 0]));
 const appearances = new Map<string, number>(ALL_NAMES.map(n => [n, 0]));
+const busts       = new Map<string, number>(ALL_NAMES.map(n => [n, 0]));
 
 type Cell = { wins: number; appearances: number };
 const crosstab = new Map<string, Map<string, Cell>>();
@@ -201,6 +212,9 @@ for (let i = 0; i < TOTAL_GAMES; i++) {
   const share = result.winnerNames.length > 0 ? 1 / result.winnerNames.length : 0;
   for (const n of result.winnerNames) {
     wins.set(n, (wins.get(n) ?? 0) + share);
+  }
+  for (const [n, count] of result.bustsByName) {
+    busts.set(n, (busts.get(n) ?? 0) + count);
   }
 
   // Crosstab
@@ -273,10 +287,12 @@ console.log("  " + line);
 for (const n of sortedNames) {
   const w = wins.get(n) ?? 0;
   const a = appearances.get(n) ?? 0;
+  const b = busts.get(n) ?? 0;
   const tag = externalNames.includes(n) ? " *" : "  ";
   console.log(
     `  ${tag}${n.padEnd(10)}  ${pct(w, a).padStart(6)}` +
-    `   ${Math.round(w).toLocaleString().padStart(5)} wins / ${a.toLocaleString().padStart(6)} appearances`,
+    `   ${Math.round(w).toLocaleString().padStart(5)} wins / ${a.toLocaleString().padStart(6)} appearances` +
+    `   bust ${pct(b, a).padStart(5)}`,
   );
 }
 if (externalNames.length > 0) {
