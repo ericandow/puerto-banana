@@ -81,7 +81,19 @@ loop:
     if current is the only tier remaining:
         current's members split the lot, free.       -> round ends
     if current has more than one member:
-        current's members split the lot, free.       -> round ends
+        // tied top tier with a next tier below
+        gap = current.bid - (next tier).bid
+        split lot/N to each member    (§1.5 — poorest first)
+        split gap/N from each member  (§1.5 reversed — richest first)
+        if any member cannot afford (stash + lot_share < gap_share):
+            all members bust to 0; those bananas are destroyed
+            the lot passes on, intact, untouched
+            current = next tier
+            continue loop
+        else:
+            each member's stash = stash + lot_share - gap_share
+            the next tier's members split `gap` between them
+                                                     -> round ends
     // current has exactly one member: the sole bidder at that price
     gap = current.bid - (next tier).bid
     if bidder.stash + lot >= gap:
@@ -97,19 +109,23 @@ loop:
 
 Read out in plain language:
 
-- **A tie at the top wins free.** If two or more players share the highest bid,
-  they are treated as holding both the highest *and* the second-highest bid. The
-  gap between them is zero. They split the lot and pay nobody. This is
-  deliberate: it makes reading the field the core skill, and it means a tied
-  tier can never bust.
+- **A tie at the top pays the gap.** If two or more players share the highest
+  bid, they must pay the gap to the next tier, splitting the cost N ways. Each
+  player receives lot/N and pays gap/N (see §1.5 for remainder rules). A player
+  nets `(lot − gap) / N` — exactly what a lone bidder at the same position would
+  net, scaled by N. Reading the field remains the core skill; ties are no longer
+  free when a meaningful next tier exists.
+- **A tied tier can bust.** If any player in the tied group cannot cover their
+  individual share (`stash + lot_share < gap_share`), the *entire group* busts —
+  all their stashes are wiped, the lot passes on intact.
 - **A lone top bidder pays the gap.** They must cover the difference between
   their bid and the next tier's bid. They may use the lot itself to help pay —
   check affordability against `stash + lot`, not `stash` alone.
-- **Failure to pay is catastrophic.** The bidder's entire stash is destroyed.
-  They do not receive the lot. Those bananas leave the game permanently — they
-  are not redistributed.
-- **The cascade.** When a bidder busts, the lot passes down intact and the next
-  tier faces the same test against the tier below *it*.
+- **Failure to pay is catastrophic.** The bidder's (or group's) entire stash is
+  destroyed. They do not receive the lot. Those bananas leave the game
+  permanently — they are not redistributed.
+- **The cascade.** When a bidder or group busts, the lot passes down intact and
+  the next tier faces the same test against the tier below *it*.
 - **The floor.** If the cascade reaches the last tier, that tier takes the lot
   for free. Someone always ends up with the lot.
 
@@ -145,8 +161,11 @@ using the game's seeded random generator (§3.3).
 > Base share is 8 each, remainder 2. The two poorest each take one extra.
 > Result: 9, 9, 8.
 
-Note there is no rule for *paying* a remainder, because a player who owes
-bananas is always a lone bidder. That case cannot arise.
+When a tied tier *pays* a gap (§1.3, Step 5), the same floor-divide applies but
+the remainder is distributed in the reverse order: each player pays
+`floor(gap / N)`, and the remainder banana(s) are paid by the players with the
+**most** bananas in the round-start snapshot (richest first). Ties in the
+snapshot are broken by the seeded random generator.
 
 ### 1.6 Worked examples
 
@@ -159,12 +178,14 @@ T1={A}@80, T2={C}@70, gap=10. A can afford (30+50 ≥ 10).
 A = 30+50−10 = **70**. C = 50+10 = **60**. B=5, D=12.
 Next lot = 70.
 
-**B — Tied top tier splits free.**
+**B — Tied top tier pays the gap.**
 Stashes A=30, B=5, C=50, D=12. Lot = 50.
 Bids A=80, C=80, B=60, D=60.
-T1={A,C} — more than one member, so they split the lot and pay nothing.
-25 each. A = **55**, C = **75**. B and D unchanged. T2 receives nothing.
-Next lot = 75.
+T1={A,C}@80, T2={B,D}@60. Gap = 20.
+A and C each receive lot/2 = 25 and pay gap/2 = 10.
+A = 30+25−10 = **45**. C = 50+25−10 = **65**.
+B and D split the gap: 10 each. B = 5+10 = **15**. D = 12+10 = **22**.
+Next lot = 65.
 
 **C — Bust, then cascade.**
 Stashes A=3, B=40, C=12. Lot = 40.
@@ -182,6 +203,14 @@ T1={A}: gap=200. A has 1+100 = 101 < 200. **A busts to 0.**
 T2={B}: gap=290. B has 2+100 = 102 < 290. **B busts to 0.**
 T3={C} is the last tier: C takes the lot free. C = 100+100 = **200**.
 **C wins.**
+
+**G — Tied top tier busts.**
+Stashes A=2, B=2, C=20. Lot = 20.
+Bids A=100, B=100, C=10.
+T1={A,B}@100, T2={C}@10. Gap = 90. Each share = 45.
+A has 2+10 = 12 (stash + lot share), but needs 45. They cannot afford it.
+**A and B bust to 0.** 4 bananas are destroyed. Lot passes on.
+T2={C} is the last tier: C takes the lot free. C = 20+20 = **40**.
 
 **E — Everyone bids the same.**
 Three players, lot = 30, all bid 12. One tier, more than one member.
@@ -427,10 +456,10 @@ State these as deliberate exclusions, not oversights:
 
 ## 6. Open questions to revisit after playtesting
 
-- **Tied-top collusion.** Two players who agree to always bid the same number
-  split every lot for free and lock everyone else out. §1.5's tie rule makes
-  this legal. Watch whether it dominates in real games; if it does, the fix is a
-  rules change, not a code change.
+- **Tied-top collusion.** Addressed: the tie rule was changed so tied top tiers
+  pay the gap to the next tier (§1.3 Step 5). Tying at the top is no longer
+  free when a lower tier exists, and a group that cannot individually cover their
+  gap shares will bust entirely.
 - **Runaway leader.** The lot equals the largest stash, so the leader's advantage
   compounds. Phase 2's simulator should reveal whether games converge or drag.
 - **Bid ceiling.** Currently unbounded. If the UI shows absurd numbers or the

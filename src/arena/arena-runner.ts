@@ -119,6 +119,11 @@ function simulateGame(slots: Slot[], gameSeed: number): GameResult {
       if (step.kind === "busted") {
         const name = resolved[parseInt(step.busterId.slice(1))].name;
         bustsByName.set(name, (bustsByName.get(name) ?? 0) + 1);
+      } else if (step.kind === "tied-busted") {
+        for (const id of step.busterIds) {
+          const name = resolved[parseInt(id.slice(1))].name;
+          bustsByName.set(name, (bustsByName.get(name) ?? 0) + 1);
+        }
       }
     }
     players = result.players;

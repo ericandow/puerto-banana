@@ -17,9 +17,11 @@ export type Tier = {
 };
 
 export type CascadeStep =
-  | { kind: "free";   tierIndex: number; bid: number; winnerIds: string[] }
-  | { kind: "paid";   tierIndex: number; bid: number; gap: number; winnerId: string; recipientIds: string[] }
-  | { kind: "busted"; tierIndex: number; bid: number; gap: number; busterId: string; destroyed: number };
+  | { kind: "free";        tierIndex: number; bid: number; winnerIds: string[] }
+  | { kind: "paid";        tierIndex: number; bid: number; gap: number; winnerId: string; recipientIds: string[] }
+  | { kind: "tied-paid";   tierIndex: number; bid: number; gap: number; winnerIds: string[]; recipientIds: string[] }
+  | { kind: "busted";      tierIndex: number; bid: number; gap: number; busterId: string; destroyed: number }
+  | { kind: "tied-busted"; tierIndex: number; bid: number; gap: number; busterIds: string[]; destroyed: number };
 
 export type Movement = {
   playerId: string;
@@ -116,12 +118,14 @@ export function formTiers(
 
 // Distributes `amount` whole bananas among `playerIds`.
 // Each receives floor(amount / count); remainder goes one banana at a time
-// to the poorest players by snapshot stash. Ties in snapshot broken by rng.
+// to the poorest players by snapshot stash (or richest-first when paying a gap).
+// Ties in snapshot broken by rng.
 export function splitBananas(
   amount: number,
   playerIds: string[],
   snapshot: Record<string, number>,
   rng: () => number,
+  richestFirst = false,
 ): Record<string, number> {
   const n = playerIds.length;
   const base = Math.floor(amount / n);
@@ -132,7 +136,7 @@ export function splitBananas(
 
   if (remainder === 0) return shares;
 
-  // Group by snapshot stash (ascending = poorest first)
+  // Group by snapshot stash, sorted by priority (poorest first for receiving, richest first for paying)
   const byStash = new Map<number, string[]>();
   for (const id of playerIds) {
     const stash = snapshot[id] ?? 0;
@@ -142,7 +146,8 @@ export function splitBananas(
 
   // Build priority order, shuffling within ties using rng
   const ordered: string[] = [];
-  for (const [, group] of [...byStash.entries()].sort(([a], [b]) => a - b)) {
+  const sortedEntries = [...byStash.entries()].sort(([a], [b]) => richestFirst ? b - a : a - b);
+  for (const [, group] of sortedEntries) {
     if (group.length > 1) {
       const shuffled = [...group];
       for (let i = shuffled.length - 1; i > 0; i--) {
@@ -213,8 +218,8 @@ export function resolveRound(
     const isLast = tierIdx === tiers.length - 1;
     const sg: string[] = [];
 
-    if (current.playerIds.length > 1 || isLast) {
-      // Free split — tied top tier, or last tier standing
+    if (isLast) {
+      // Last tier standing: free split regardless of size
       const winnerNames = current.playerIds.map(nameOf);
 
       if (current.playerIds.length > 1) {
@@ -251,92 +256,190 @@ export function resolveRound(
       break;
     }
 
-    // Lone bidder at this tier
-    const bidderId = current.playerIds[0];
-    const next = tiers[tierIdx + 1];
-    const gap = current.bid - next.bid;
-    const canAfford = stashes[bidderId] + lot >= gap;
+    if (current.playerIds.length > 1) {
+      // Tied top tier with a next tier: pay the gap (split N ways)
+      const next = tiers[tierIdx + 1];
+      const gap = current.bid - next.bid;
+      const winnerNames = current.playerIds.map(nameOf);
 
-    sg.push(
-      `${nameOf(bidderId)} alone bid highest at ${current.bid}. ` +
-      `The next bid is ${next.bid}, a gap of ${gap}.`,
-    );
-
-    if (canAfford) {
       sg.push(
-        `${nameOf(bidderId)} has ${stashes[bidderId]} bananas ` +
-        `plus the ${lot}-banana lot — they can afford it.`,
+        `${listNames(winnerNames)} tied at the top with a bid of ${current.bid}. ` +
+        `The next bid is ${next.bid}, a gap of ${gap}.`,
       );
 
-      const before = stashes[bidderId];
-      stashes[bidderId] = before + lot - gap;
-      movements.push({
-        playerId: bidderId,
-        delta: stashes[bidderId] - before,
-        reason: `won lot, paid gap of ${gap}`,
-      });
+      // Lot split: poorest first (§1.5). Gap split: richest first (reverse §1.5).
+      const lotShares = splitBananas(lot, current.playerIds, snapshot, rng);
+      const gapShares = splitBananas(gap, current.playerIds, snapshot, rng, true);
 
-      const gapShares = splitBananas(gap, next.playerIds, snapshot, rng);
-      for (const id of next.playerIds) {
-        stashes[id] += gapShares[id];
-        movements.push({ playerId: id, delta: gapShares[id], reason: "received gap payment" });
-      }
+      const canAfford = current.playerIds.every(
+        id => stashes[id] + lotShares[id] >= gapShares[id],
+      );
 
-      const kept = lot - gap;
-      if (kept >= 0) {
+      if (canAfford) {
+        for (const id of current.playerIds) {
+          const net = lotShares[id] - gapShares[id];
+          stashes[id] += net;
+          movements.push({
+            playerId: id,
+            delta: net,
+            reason: `tied: received ${lotShares[id]} lot share, paid ${gapShares[id]} gap`,
+          });
+        }
+
+        const gapToNext = splitBananas(gap, next.playerIds, snapshot, rng);
+        for (const id of next.playerIds) {
+          stashes[id] += gapToNext[id];
+          movements.push({ playerId: id, delta: gapToNext[id], reason: "received gap payment" });
+        }
+
+        for (const id of current.playerIds) {
+          sg.push(
+            `${nameOf(id)} receives ${lotShares[id]} and pays ${gapShares[id]}.`,
+          );
+        }
         sg.push(
-          `${nameOf(bidderId)} pays ${gap} to ${listNames(next.playerIds.map(nameOf))} ` +
-          `and keeps ${kept} bananas from the lot.`,
+          [...current.playerIds, ...next.playerIds]
+            .map(id => `${nameOf(id)}: ${snapshot[id]} -> ${stashes[id]}`)
+            .join("  ") + ".",
         );
+
+        stepGroups.push(sg);
+        cascadeSteps.push({
+          kind: "tied-paid",
+          tierIndex: tierIdx,
+          bid: current.bid,
+          gap,
+          winnerIds: current.playerIds,
+          recipientIds: next.playerIds,
+        });
+        break;
       } else {
+        // Some player(s) can't afford their share — whole group busts
+        const offender = current.playerIds.find(
+          id => stashes[id] + lotShares[id] < gapShares[id],
+        )!;
+        const destroyed = current.playerIds.reduce((s, id) => s + stashes[id], 0);
+
         sg.push(
-          `${nameOf(bidderId)} uses the full lot and ${-kept} from their own stash ` +
-          `to pay the ${gap}-banana gap to ${listNames(next.playerIds.map(nameOf))}.`,
+          `${nameOf(offender)} has ${stashes[offender]} banana${stashes[offender] !== 1 ? "s" : ""} ` +
+          `plus their ${lotShares[offender]}-banana lot share ` +
+          `= ${stashes[offender] + lotShares[offender]} total, ` +
+          `but needs ${gapShares[offender]}. They cannot afford it.`,
         );
+        sg.push(
+          `${listNames(winnerNames)} bust. ` +
+          `Their ${destroyed} banana${destroyed !== 1 ? "s are" : " is"} destroyed. ` +
+          `The lot passes on intact.`,
+        );
+        sg.push(
+          current.playerIds.map(id => `${nameOf(id)}: ${snapshot[id]} -> 0`).join("  ") + ".",
+        );
+
+        bananasDestroyed += destroyed;
+        for (const id of current.playerIds) {
+          movements.push({ playerId: id, delta: -stashes[id], reason: "busted (tied tier)" });
+          stashes[id] = 0;
+        }
+
+        stepGroups.push(sg);
+        cascadeSteps.push({
+          kind: "tied-busted",
+          tierIndex: tierIdx,
+          bid: current.bid,
+          gap,
+          busterIds: current.playerIds,
+          destroyed,
+        });
+        tierIdx++;
       }
-      sg.push(
-        [bidderId, ...next.playerIds]
-          .map(id => `${nameOf(id)}: ${snapshot[id]} -> ${stashes[id]}`)
-          .join("  ") + ".",
-      );
-
-      stepGroups.push(sg);
-      cascadeSteps.push({
-        kind: "paid",
-        tierIndex: tierIdx,
-        bid: current.bid,
-        gap,
-        winnerId: bidderId,
-        recipientIds: next.playerIds,
-      });
-      break;
     } else {
-      // Bust
-      const destroyed = stashes[bidderId];
+      // Lone bidder at this tier
+      const bidderId = current.playerIds[0];
+      const next = tiers[tierIdx + 1];
+      const gap = current.bid - next.bid;
+      const canAfford = stashes[bidderId] + lot >= gap;
+
       sg.push(
-        `${nameOf(bidderId)} has ${destroyed} banana${destroyed !== 1 ? "s" : ""} ` +
-        `plus the ${lot}-banana lot = ${destroyed + lot} total, ` +
-        `but needs ${gap}. They cannot afford it.`,
-      );
-      sg.push(
-        `${nameOf(bidderId)} busts. ` +
-        `Their ${destroyed} banana${destroyed !== 1 ? "s are" : " is"} destroyed. ` +
-        `The lot passes on intact.`,
+        `${nameOf(bidderId)} alone bid highest at ${current.bid}. ` +
+        `The next bid is ${next.bid}, a gap of ${gap}.`,
       );
 
-      bananasDestroyed += destroyed;
-      movements.push({ playerId: bidderId, delta: -destroyed, reason: "busted" });
-      cascadeSteps.push({
-        kind: "busted",
-        tierIndex: tierIdx,
-        bid: current.bid,
-        gap,
-        busterId: bidderId,
-        destroyed,
-      });
-      stepGroups.push(sg);
-      stashes[bidderId] = 0;
-      tierIdx++;
+      if (canAfford) {
+        sg.push(
+          `${nameOf(bidderId)} has ${stashes[bidderId]} bananas ` +
+          `plus the ${lot}-banana lot — they can afford it.`,
+        );
+
+        const before = stashes[bidderId];
+        stashes[bidderId] = before + lot - gap;
+        movements.push({
+          playerId: bidderId,
+          delta: stashes[bidderId] - before,
+          reason: `won lot, paid gap of ${gap}`,
+        });
+
+        const gapShares = splitBananas(gap, next.playerIds, snapshot, rng);
+        for (const id of next.playerIds) {
+          stashes[id] += gapShares[id];
+          movements.push({ playerId: id, delta: gapShares[id], reason: "received gap payment" });
+        }
+
+        const kept = lot - gap;
+        if (kept >= 0) {
+          sg.push(
+            `${nameOf(bidderId)} pays ${gap} to ${listNames(next.playerIds.map(nameOf))} ` +
+            `and keeps ${kept} bananas from the lot.`,
+          );
+        } else {
+          sg.push(
+            `${nameOf(bidderId)} uses the full lot and ${-kept} from their own stash ` +
+            `to pay the ${gap}-banana gap to ${listNames(next.playerIds.map(nameOf))}.`,
+          );
+        }
+        sg.push(
+          [bidderId, ...next.playerIds]
+            .map(id => `${nameOf(id)}: ${snapshot[id]} -> ${stashes[id]}`)
+            .join("  ") + ".",
+        );
+
+        stepGroups.push(sg);
+        cascadeSteps.push({
+          kind: "paid",
+          tierIndex: tierIdx,
+          bid: current.bid,
+          gap,
+          winnerId: bidderId,
+          recipientIds: next.playerIds,
+        });
+        break;
+      } else {
+        // Bust
+        const destroyed = stashes[bidderId];
+        sg.push(
+          `${nameOf(bidderId)} has ${destroyed} banana${destroyed !== 1 ? "s" : ""} ` +
+          `plus the ${lot}-banana lot = ${destroyed + lot} total, ` +
+          `but needs ${gap}. They cannot afford it.`,
+        );
+        sg.push(
+          `${nameOf(bidderId)} busts. ` +
+          `Their ${destroyed} banana${destroyed !== 1 ? "s are" : " is"} destroyed. ` +
+          `The lot passes on intact.`,
+        );
+
+        bananasDestroyed += destroyed;
+        movements.push({ playerId: bidderId, delta: -destroyed, reason: "busted" });
+        cascadeSteps.push({
+          kind: "busted",
+          tierIndex: tierIdx,
+          bid: current.bid,
+          gap,
+          busterId: bidderId,
+          destroyed,
+        });
+        stepGroups.push(sg);
+        stashes[bidderId] = 0;
+        tierIdx++;
+      }
     }
   }
 
@@ -424,7 +527,7 @@ function assertInvariants(
     );
   }
 
-  const lotReceivers = cascadeSteps.filter(s => s.kind === "free" || s.kind === "paid");
+  const lotReceivers = cascadeSteps.filter(s => s.kind === "free" || s.kind === "paid" || s.kind === "tied-paid");
   if (lotReceivers.length !== 1) {
     fail(`Expected exactly 1 lot-receiving tier, got ${lotReceivers.length}`, narration);
   }

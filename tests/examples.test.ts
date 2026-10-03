@@ -45,12 +45,15 @@ test("Example A — Lone winner pays the gap", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Example B — Tied top tier splits free
+// Example B — Tied top tier pays the gap
 // Stashes A=30, B=5, C=50, D=12. Lot=50.
 // Bids A=80, C=80, B=60, D=60.
-// T1={A,C} tied — split lot free. 25 each. A=55, C=75. B,D unchanged.
+// T1={A,C}@80, T2={B,D}@60. Gap=20.
+// Each of A,C receives lot/2=25 and pays gap/2=10.
+// A = 30+25−10 = 45. C = 50+25−10 = 65.
+// B and D split the gap: 10 each. B = 5+10 = 15. D = 12+10 = 22.
 // ---------------------------------------------------------------------------
-test("Example B — Tied top tier splits free", () => {
+test("Example B — Tied top tier pays the gap", () => {
   const players: Player[] = [
     { id: "A", name: "A", stash: 30 },
     { id: "B", name: "B", stash: 5 },
@@ -63,12 +66,14 @@ test("Example B — Tied top tier splits free", () => {
   printNarration(log.narration);
 
   const s = stashes(result);
-  assert.equal(s.A, 55);
-  assert.equal(s.B, 5);
-  assert.equal(s.C, 75);
-  assert.equal(s.D, 12);
+  assert.equal(s.A, 45);
+  assert.equal(s.B, 15);
+  assert.equal(s.C, 65);
+  assert.equal(s.D, 22);
   assert.equal(log.lot, 50);
   assert.equal(log.bananasDestroyed, 0);
+  assert.equal(log.cascadeSteps.length, 1);
+  assert.equal(log.cascadeSteps[0].kind, "tied-paid");
 });
 
 // ---------------------------------------------------------------------------
@@ -151,6 +156,36 @@ test("Example E — Everyone bids the same", () => {
   // Confirm it was a free split with no cascade steps of kind "paid" or "busted"
   assert.equal(log.cascadeSteps.length, 1);
   assert.equal(log.cascadeSteps[0].kind, "free");
+});
+
+// ---------------------------------------------------------------------------
+// Example G — Tied top tier busts, lot cascades to sole survivor
+// Stashes A=2, B=2, C=20. Lot=20.
+// Bids A=100, B=100, C=10.
+// T1={A,B}@100, T2={C}@10. Gap=90. Each share=45; A has 2+10=12 < 45.
+// A and B bust (4 bananas destroyed). Lot passes to T2={C}, last tier.
+// C takes lot free. C = 20+20 = 40.
+// ---------------------------------------------------------------------------
+test("Example G — Tied top tier busts", () => {
+  const players: Player[] = [
+    { id: "A", name: "A", stash: 2 },
+    { id: "B", name: "B", stash: 2 },
+    { id: "C", name: "C", stash: 20 },
+  ];
+  const bids = { A: 100, B: 100, C: 10 };
+
+  const { players: result, log } = resolveRound(2, players, bids, makeRng(1));
+  printNarration(log.narration);
+
+  const s = stashes(result);
+  assert.equal(s.A, 0);
+  assert.equal(s.B, 0);
+  assert.equal(s.C, 40);
+  assert.equal(log.lot, 20);
+  assert.equal(log.bananasDestroyed, 4);
+  assert.equal(log.cascadeSteps.length, 2);
+  assert.equal(log.cascadeSteps[0].kind, "tied-busted");
+  assert.equal(log.cascadeSteps[1].kind, "free");
 });
 
 // ---------------------------------------------------------------------------
