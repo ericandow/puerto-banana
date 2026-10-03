@@ -1,3 +1,6 @@
 node_modules/
 dist/
 playground/bundle.js
+
+# make it easy to experiment with bots without committing
+bots/
