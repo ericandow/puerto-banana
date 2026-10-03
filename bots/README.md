@@ -22,8 +22,10 @@ npm run arena -- bots/my-bot.ts
 |---|---|---|
 | `lot` | `number` | How many bananas are up for auction this round |
 | `round` | `number` | Round number (1-indexed) |
+| `myIndex` | `number` | Your player index (0-based). Stable for the whole game. |
 | `myStash` | `number` | Your banana count before bids are resolved |
-| `prevBids` | `number[] \| null` | All bids from last round, sorted ascending. `null` in round 1. No player attribution — you can't tell which bid came from which opponent. |
+| `stashes` | `number[]` | Every player's stash before bids are resolved, ordered by player index. `stashes[myIndex] === myStash`. |
+| `prevBids` | `number[] \| null` | All bids from last round, ordered by player index. `null` in round 1. |
 | `prevLot` | `number \| null` | Lot size last round. `null` in round 1. |
 
 ## Rules

@@ -39,7 +39,9 @@ function resolvedBid(
   slot: ResolvedSlot,
   lot: number,
   round: number,
+  myIndex: number,
   myStash: number,
+  stashes: number[],
   rng: () => number,
   prevBids: number[] | null,
   prevLot: number | null,
@@ -47,7 +49,7 @@ function resolvedBid(
   if (slot.kind === "builtin") {
     return builtinBid(slot.strategy, lot, rng, prevBids, prevLot);
   }
-  return slot.gameBot.call({ lot, round, myStash, prevBids, prevLot });
+  return slot.gameBot.call({ lot, round, myIndex, myStash, stashes, prevBids, prevLot });
 }
 
 // ---------------------------------------------------------------------------
@@ -105,8 +107,9 @@ function simulateGame(slots: Slot[], gameSeed: number): GameResult {
 
     const bids: Record<string, number> = {};
     const bidValues: number[] = [];
+    const stashes = players.map(p => p.stash);
     for (let i = 0; i < players.length; i++) {
-      const bid = resolvedBid(resolved[i], lot, round, players[i].stash, rng, prevBids, prevLot);
+      const bid = resolvedBid(resolved[i], lot, round, i, players[i].stash, stashes, rng, prevBids, prevLot);
       bids[players[i].id] = bid;
       bidValues.push(bid);
     }
